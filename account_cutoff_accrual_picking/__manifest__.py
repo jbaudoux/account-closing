@@ -62,7 +62,7 @@ for any help or question about this module.
         'images/accrued_expense_journal_entry.jpg',
         'images/accrued_expense_done.jpg',
         ],
-    'installable': False,
-    'active': False,
+    'installable': True,
+    #'active': False,
     'application': True,
 }
