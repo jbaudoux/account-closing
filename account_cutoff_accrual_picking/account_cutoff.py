@@ -20,11 +20,23 @@
 #
 ##############################################################################
 
-from odoo import _, exceptions, models, fields
+from odoo import _, api, fields, exceptions, models
 
 
 class account_cutoff(models.Model):
     _inherit = 'account.cutoff'
+
+    @api.model
+    def _inherit_default_cutoff_account_id(self):
+        account_id = super(account_cutoff,
+                           self)._inherit_default_cutoff_account_id()
+        type = self.env.context.get('type')
+        company = self.env.user.company_id
+        if type == 'accrued_expense':
+            account_id = company.default_accrued_expense_account_id.id or False
+        elif type == 'accrued_revenue':
+            account_id = company.default_accrued_revenue_account_id.id or False
+        return account_id
 
     def _prepare_lines(self, line, account_mapping):
         """
@@ -37,8 +49,7 @@ class account_cutoff(models.Model):
         company_currency_id = self.company_id.currency_id
         if self.type == 'accrued_expense':
             # Processing purchase order line
-            # TODO : is this obsolete ?
-            account_id = ''  # move_line.product_id.property_account_expense.id
+            account_id = line.product_id.property_account_expense_id
             if not account_id:
                 account_id = line.product_id.product_tmpl_id.categ_id.\
                     property_account_expense_categ_id.id
@@ -50,15 +61,14 @@ class account_cutoff(models.Model):
                     % (line.product_id.name))
             currency = line.currency_id
             analytic_account_id = line.account_analytic_id.id or False
-            # TODO price_unit or price_unit base ?
             price_unit = line.price_unit
-            # TODO taxes is it ok ?
-            # taxes = move_line.purchase_line_id.taxes_id
             taxes = line.taxes_id
             partner_id = line.order_id.partner_id.id
             tax_account_field_name = 'account_accrued_expense_id'
             tax_account_field_label = 'Accrued Expense Tax Account'
             quantity = line.qty_received - line.qty_invoiced
+            stock_move = self.env['stock.move'].search([
+                ['purchase_line_id', '=', line.id]])
 
         elif self.type == 'accrued_revenue':
             # Processing sale order line
@@ -79,6 +89,8 @@ class account_cutoff(models.Model):
             tax_account_field_name = 'account_accrued_revenue_id'
             tax_account_field_label = 'Accrued Revenue Tax Account'
             quantity = line.qty_to_invoice
+            stock_move = self.env['stock.move'].search([
+                ['order_line_id', '=', line.id]])
 
         currency_id = currency.id
         # TODO Compute total without taxes ?
@@ -135,7 +147,8 @@ class account_cutoff(models.Model):
         res = {
             'parent_id': self.id,
             'partner_id': partner_id,
-            'stock_move_id': line.id,
+            # TODO : Get the stock-move id, but there can be more than one
+            'stock_move_id': '',
             'name': line.name,
             'account_id': account_id,
             'cutoff_account_id': accrual_account_id,
@@ -148,6 +161,11 @@ class account_cutoff(models.Model):
             'cutoff_amount': amount_company_currency,
             'tax_line_ids': tax_line_ids,
         }
+        if self.type == 'accrued_revenue':
+            res['sale_line_id'] = line.id
+        elif self.type == 'accrued_expense':
+            res['purchase_line_id'] = line.id
+
         return res
 
     def get_lines_for_cutoff(self):
@@ -155,7 +173,8 @@ class account_cutoff(models.Model):
         # Delete existing cutoff lines from previous run
         to_delete_line_ids = self.env['account.cutoff.line'].search([
             ('parent_id', '=', self.id),
-            ('stock_move_id', '!=', False)])
+            # ('stock_move_id', '!=', False)
+            ])
         if to_delete_line_ids:
             to_delete_line_ids.unlink()
         # Get lines to process
@@ -193,18 +212,39 @@ class account_cutoff_line(models.Model):
         string='Stock Move',
         readonly=True
     )
+    sale_line_id = fields.Many2one(
+        comodel_name='sale.order.line',
+        string='Sale Order Line',
+        readonly=True
+    )
+    purchase_line_id = fields.Many2one(
+        comodel_name='purchase.order.line',
+        string='Purchase Order Line',
+        readonly=True
+    )
+    order_id = fields.Char(
+        compute='_get_order_id',
+    )
     product_id = fields.Many2one(
-       related='stock_move_id.product_id',
-       string='Product',
-       readonly=True
-    )
-    picking_id = fields.Many2one(
-        related='stock_move_id.picking_id',
-        string='Picking',
+        comodel_name='product.product',
+        string='Product',
         readonly=True
     )
-    picking_date_done = fields.Datetime(
-        related='picking_id.date_done',
-        string='Date Done of the Picking',
-        readonly=True
-    )
+    #picking_id = fields.Many2one(
+        #related='stock_move_id.picking_id',
+        #string='Picking',
+        #readonly=True
+    #)
+    #picking_date_done = fields.Datetime(
+        #related='picking_id.date_done',
+        #string='Date Done of the Picking',
+        #readonly=True
+    #)
+
+    @api.depends('sale_line_id', 'purchase_line_id')
+    def _get_order_id(self):
+        for rec in self:
+            if rec.sale_line_id:
+                rec.order_id = rec.sale_line_id.order_id.name
+            elif rec.purchase_line_id:
+                rec.order_id = rec.purchase_line_id.order_id.name
