@@ -55,7 +55,7 @@ for any help or question about this module.
     'website': 'http://www.akretion.com',
     'depends': ['account_cutoff_accrual_base', 'purchase', 'sale_stock'],
     'data': [
-        'account_cutoff_view.xml',
+        'views/account_cutoff_view.xml',
     ],
     'images': [
         'images/accrued_expense_draft.jpg',

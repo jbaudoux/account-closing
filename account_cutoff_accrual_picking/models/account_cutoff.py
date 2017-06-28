@@ -22,7 +22,6 @@
 
 from odoo import _, api, exceptions, fields, models
 
-
 class AccountCutoff(models.Model):
     _inherit = 'account.cutoff'
 
@@ -44,51 +43,45 @@ class AccountCutoff(models.Model):
         Calculate accrued expense using purchase.order.line
         or accrued revenu using sale.order.line
         """
-
         assert self.type in ('accrued_expense', 'accrued_revenue'),\
             "The field 'type' has a wrong value"
         company_currency_id = self.company_id.currency_id
         currency = line.currency_id
         if self.type == 'accrued_expense':
             # Processing purchase order line
-            account_id = line.product_id.property_account_expense_id
+            account_id = line.product_id.property_account_expense_id.id
             if not account_id:
                 account_id = line.product_id.product_tmpl_id.categ_id.\
                     property_account_expense_categ_id.id
             if not account_id:
-                raise exceptions.except_orm(
-                    _('Error:'),
-                    _("Missing expense account on product '%s' or on its "
-                        "related product category.")
-                    % (line.product_id.name))
+                raise exceptions.Warning(
+                    _("Error: Missing expense account on product '%s' or on "
+                        "related product category.") % (line.product_id.name))
             analytic_account_id = line.account_analytic_id.id or False
             price_unit = line.price_unit
             taxes = line.taxes_id
-            partner_id = line.order_id.partner_id.id
             tax_account_field_name = 'account_accrued_expense_id'
             tax_account_field_label = 'Accrued Expense Tax Account'
             quantity = line.qty_received - line.qty_invoiced
 
         elif self.type == 'accrued_revenue':
             # Processing sale order line
-            account_id = line.product_id.property_account_income_id
+            account_id = line.product_id.property_account_income_id.id
             if not account_id:
                 account_id = line.product_id.product_tmpl_id.categ_id.\
                     property_account_income_categ_id.id
             if not account_id:
-                raise exceptions.except_orm(
-                    _('Error:'),
-                    _("Missing income account on product '%s' or on its "
-                      "related product category.")
-                    % (line.product_id.name))
+                raise exceptions.Warning(
+                    _("Error: Missing income account on product '%s' or on "
+                      "related product category.") % (line.product_id.name))
             analytic_account_id = line.order_id.project_id.id or False
             price_unit = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
             taxes = line.tax_id
-            partner_id = line.order_id.partner_id.id
             tax_account_field_name = 'account_accrued_revenue_id'
             tax_account_field_label = 'Accrued Revenue Tax Account'
             quantity = line.qty_to_invoice
 
+        partner_id = line.order_id.partner_id.id
         currency_id = currency.id
         # Processing the taxes
         tax_line_ids = []
@@ -101,9 +94,8 @@ class AccountCutoff(models.Model):
             tax_read = self.env['account.tax'].browse(tax_line['id'])
             tax_accrual_account_id = tax_read[tax_account_field_name]
             if not tax_accrual_account_id:
-                raise exceptions.except_orm(
-                    _('Error:'),
-                    _("Missing '%s' on tax '%s'.")
+                raise exceptions.Warning(
+                    _("Error: Missing '%s' on tax '%s'.")
                     % (tax_account_field_label, tax_read['name']))
             else:
                 tax_accrual_account_id = tax_accrual_account_id[0]
@@ -123,12 +115,10 @@ class AccountCutoff(models.Model):
                 'sequence': tax_line['sequence'],
                 'cutoff_account_id': tax_accrual_account_id.id,
                 'cutoff_amount': tax_accrual_amount,
-                'analytic_account_id':
-                tax_line['account_id'],  # or refund_account_id ?
+                'analytic_account_id': tax_line['analytic'],
                 # tax_line['account_analytic_collected_id'],
                 # account_analytic_collected_id is for invoices IN and OUT
             }))
-
         if company_currency_id != currency_id:
             amount_company_currency = self.env['res.currency'].with_context(
                 date=self.cutoff_date)._compute(
@@ -143,7 +133,7 @@ class AccountCutoff(models.Model):
         res = {
             'parent_id': self.id,
             'partner_id': partner_id,
-            # TODO : Get the stock-move id, but there can be more than one
+            # TODO : Probably ditch all the stock info
             'stock_move_id': '',
             'name': line.name,
             'account_id': account_id,
@@ -164,37 +154,38 @@ class AccountCutoff(models.Model):
         return res
 
     def get_lines_for_cutoff(self):
-        """ Get the purchase or sale order lines to generate cutoff"""
-        # Delete existing cutoff lines from previous run
-        to_delete_line_ids = self.env['account.cutoff.line'].search([
-            ('parent_id', '=', self.id),
-            # ('stock_move_id', '!=', False)
-            ])
-        if to_delete_line_ids:
-            to_delete_line_ids.unlink()
-        # Get lines to process
+        """ Get the purchase or sale order lines to generate cutoff with"""
         # TODO For a certain date ?
         if self.type == 'accrued_revenue':
             lines = self.env['sale.order.line'].search([
-                ['qty_to_invoice', '>', 0],
+                ['qty_to_invoice', '!=', 0],
             ])
         elif self.type == 'accrued_expense':
-            lines = self.env['purchase.order.line'].search([
-                # TODO Is this correct, improve ?
-                # quantity = line.qty_received - line.qty_invoiced
-                ['state', '=', 'purchase']
-                ])
-        # Create account mapping dict
-        account_mapping = self.env['account.cutoff.mapping']._get_mapping_dict(
+            lines = self.env['purchase.order.line'].search(
+                [('qty_to_invoice', '!=', 0)]
+            )
+        else:
+            raise exceptions.Warning(
+                    _("Error: account.cutoff type is incorrect"))
+        return lines
+
+    def _get_account_mapping(self):
+        """ Prepare account mapping """
+        return self.env['account.cutoff.mapping']._get_mapping_dict(
             self.company_id.id, self.type)
+
+    def generate_from_orders(self):
+        """ Generate accrued lines from sale and purchase orders """
+        lines = self.get_lines_for_cutoff()
+        account_mapping = self._get_account_mapping()
+        # Delete existing cutoff lines from previous run
+        to_delete_line_ids = self.env['account.cutoff.line'].search([
+            ('parent_id', '=', self.id)])
+        if to_delete_line_ids:
+            to_delete_line_ids.unlink()
         for line in lines:
-            if (self.type == 'accrued_expense'):
-                # Process only pol with a diff between qty invoice and received
-                if (line.qty_invoiced == line.qty_received):
-                    continue
             self.env['account.cutoff.line'].create(
                 self._prepare_lines(line, account_mapping))
-        return True
 
 
 class AccountCutoffLine(models.Model):
