@@ -16,7 +16,7 @@
     <field name="inherit_id" ref="account_cutoff_base.account_cutoff_form"/>
     <field name="arch" type="xml">
         <button name="back2draft" position="after">
-            <button class="oe_highlight" name="get_lines_for_cutoff" string="Re-Generate Lines from Picking" type="object" states="draft" invisible="'accrued' not in context.get('type', '-')"/>
+            <button class="oe_highlight" name="generate_from_orders" string="Re-Generate Lines from Picking" type="object" states="draft" invisible="'accrued' not in context.get('type', '-')"/>
         </button>
     </field>
 </record>
