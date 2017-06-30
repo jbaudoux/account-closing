@@ -22,7 +22,6 @@
 
 from odoo import _, api, exceptions, fields, models
 
-
 class AccountCutoff(models.Model):
     _inherit = 'account.cutoff'
 
@@ -50,7 +49,7 @@ class AccountCutoff(models.Model):
         currency = line.currency_id
         if self.type == 'accrued_expense':
             # Processing purchase order line
-            account_id = line.product_id.property_account_expense_id
+            account_id = line.product_id.property_account_expense_id.id
             if not account_id:
                 account_id = line.product_id.product_tmpl_id.categ_id.\
                     property_account_expense_categ_id.id
@@ -67,7 +66,7 @@ class AccountCutoff(models.Model):
 
         elif self.type == 'accrued_revenue':
             # Processing sale order line
-            account_id = line.product_id.property_account_income_id
+            account_id = line.product_id.property_account_income_id.id
             if not account_id:
                 account_id = line.product_id.product_tmpl_id.categ_id.\
                     property_account_income_categ_id.id
@@ -116,12 +115,10 @@ class AccountCutoff(models.Model):
                 'sequence': tax_line['sequence'],
                 'cutoff_account_id': tax_accrual_account_id.id,
                 'cutoff_amount': tax_accrual_amount,
-                'analytic_account_id':
-                tax_line['account_id'],  # or refund_account_id ?
+                'analytic_account_id': tax_line['analytic'],
                 # tax_line['account_analytic_collected_id'],
                 # account_analytic_collected_id is for invoices IN and OUT
             }))
-
         if company_currency_id != currency_id:
             amount_company_currency = self.env['res.currency'].with_context(
                 date=self.cutoff_date)._compute(
@@ -136,7 +133,7 @@ class AccountCutoff(models.Model):
         res = {
             'parent_id': self.id,
             'partner_id': partner_id,
-            # TODO
+            # TODO : Probably ditch all the stock info
             'stock_move_id': '',
             'name': line.name,
             'account_id': account_id,
@@ -158,7 +155,6 @@ class AccountCutoff(models.Model):
 
     def get_lines_for_cutoff(self):
         """ Get the purchase or sale order lines to generate cutoff with"""
-        # Find the lines to process
         # TODO For a certain date ?
         if self.type == 'accrued_revenue':
             lines = self.env['sale.order.line'].search([
@@ -188,10 +184,6 @@ class AccountCutoff(models.Model):
         if to_delete_line_ids:
             to_delete_line_ids.unlink()
         for line in lines:
-            if (self.type == 'accrued_expense'):
-                # Process only pol with a diff between qty invoice and received
-                if (line.qty_invoiced == line.qty_received):
-                    continue
             self.env['account.cutoff.line'].create(
                 self._prepare_lines(line, account_mapping))
 
