@@ -22,6 +22,7 @@
 
 from odoo import _, api, exceptions, fields, models
 
+
 class AccountCutoff(models.Model):
     _inherit = 'account.cutoff'
 
@@ -104,7 +105,7 @@ class AccountCutoff(models.Model):
             if company_currency_id != currency_id:
                 currency_at_date = currency.with_context(date=self.cutoff_date)
                 tax_accrual_amount = currency_at_date.compute(
-                        tax_line['amount'], company_currency_id)
+                    tax_line['amount'], company_currency_id)
             else:
                 tax_accrual_amount = tax_line['amount']
             tax_line_ids.append((0, 0, {
@@ -165,7 +166,7 @@ class AccountCutoff(models.Model):
             )
         else:
             raise exceptions.UserError(
-                    _("Error: account.cutoff type is incorrect"))
+                _("Error: account.cutoff type is incorrect"))
         return lines
 
     def _get_account_mapping(self):

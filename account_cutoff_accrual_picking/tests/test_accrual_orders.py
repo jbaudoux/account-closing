@@ -21,11 +21,14 @@ class TestAccountCutoffAccrualPicking(TransactionCase):
             'partner_id': self.partner.id,
             'partner_invoice_id': self.partner.id,
             'partner_shipping_id': self.partner.id,
-            'order_line': [(0, 0, {'name': p.name, 'product_id': p.id, 'product_uom_qty': 2, 'product_uom': p.uom_id.id, 'price_unit': p.list_price}) for (_, p) in self.products.iteritems()],
+            'order_line': [(0, 0,
+                            {'name': p.name, 'product_id': p.id,
+                             'product_uom_qty': 2, 'product_uom': p.uom_id.id,
+                             'price_unit': p.list_price})
+                           for (_, p) in self.products.iteritems()],
             'pricelist_id': self.env.ref('product.list0').id,
         })
         self.product_id_1 = self.env.ref('product.product_product_8')
-        #self.product_id_2 = self.env.ref('product.product_product_11')
         po_vals = {
             'partner_id': self.partner.id,
             'order_line': [
@@ -35,7 +38,8 @@ class TestAccountCutoffAccrualPicking(TransactionCase):
                     'product_qty': 5.0,
                     'product_uom': self.product_id_1.uom_po_id.id,
                     'price_unit': 500.0,
-                    'date_planned': datetime.today().strftime(DEFAULT_SERVER_DATETIME_FORMAT),
+                    'date_planned': datetime.today().strftime(
+                        DEFAULT_SERVER_DATETIME_FORMAT),
                 })],
         }
         # Removing all existing purchase orders and add one to test
@@ -69,12 +73,15 @@ class TestAccountCutoffAccrualPicking(TransactionCase):
         self.so.force_quotation_send()
         self.so.action_confirm()
         lines = cutoff.get_lines_for_cutoff()
-        self.assertTrue(len(lines) == 2, '2 lines should be found to calculate cutoff')
+        self.assertTrue(len(lines) == 2,
+                        '2 lines should be found to calculate cutoff')
         account_mapping = cutoff._get_account_mapping()
         l = cutoff._prepare_lines(lines[0], account_mapping)
-        self.assertTrue(l['cutoff_amount'] == 560, 'So line 0 cutoff amount incorrect')
+        self.assertTrue(l['cutoff_amount'] == 560,
+                        'So line 0 cutoff amount incorrect')
         l = cutoff._prepare_lines(lines[1], account_mapping)
-        self.assertTrue(l['cutoff_amount'] == 180, 'So line 1 cutoff amount incorrect')
+        self.assertTrue(l['cutoff_amount'] == 180,
+                        'So line 1 cutoff amount incorrect')
 
     def test_accrued_expense(self):
         """ Test partial po to process """
@@ -92,7 +99,9 @@ class TestAccountCutoffAccrualPicking(TransactionCase):
         wiz = self.env[wiz_act['res_model']].browse(wiz_act['res_id'])
         wiz.process()
         lines = cutoff.get_lines_for_cutoff()
-        self.assertTrue(len(lines)==1, '1 lines should be found to calculate expense cutoff')
+        self.assertTrue(len(lines) == 1,
+                        '1 lines should be found to calculate expense cutoff')
         account_mapping = cutoff._get_account_mapping()
         l = cutoff._prepare_lines(lines[0], account_mapping)
-        self.assertTrue(l['cutoff_amount'] == -2000, 'Line 0 cutoff amount incorrect')
+        self.assertTrue(l['cutoff_amount'] == -2000,
+                        'Line 0 cutoff amount incorrect')
