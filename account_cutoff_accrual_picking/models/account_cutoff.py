@@ -54,10 +54,10 @@ class AccountCutoff(models.Model):
                 account_id = line.product_id.product_tmpl_id.categ_id.\
                     property_account_expense_categ_id.id
             if not account_id:
-                raise exceptions.Warning(
+                raise exceptions.UserError(
                     _("Error: Missing expense account on product '%s' or on "
                         "related product category.") % (line.product_id.name))
-            analytic_account_id = line.account_analytic_id.id or False
+            analytic_account_id = line.account_analytic_id.id
             price_unit = line.price_unit
             taxes = line.taxes_id
             tax_account_field_name = 'account_accrued_expense_id'
@@ -71,7 +71,7 @@ class AccountCutoff(models.Model):
                 account_id = line.product_id.product_tmpl_id.categ_id.\
                     property_account_income_categ_id.id
             if not account_id:
-                raise exceptions.Warning(
+                raise exceptions.UserError(
                     _("Error: Missing income account on product '%s' or on "
                       "related product category.") % (line.product_id.name))
             analytic_account_id = line.order_id.project_id.id or False
@@ -94,7 +94,7 @@ class AccountCutoff(models.Model):
             tax_read = self.env['account.tax'].browse(tax_line['id'])
             tax_accrual_account_id = tax_read[tax_account_field_name]
             if not tax_accrual_account_id:
-                raise exceptions.Warning(
+                raise exceptions.UserError(
                     _("Error: Missing '%s' on tax '%s'.")
                     % (tax_account_field_label, tax_read['name']))
             else:
@@ -102,10 +102,9 @@ class AccountCutoff(models.Model):
             if self.type == 'accrued_expense':
                 tax_line['amount'] = tax_line['amount'] * -1
             if company_currency_id != currency_id:
-                tax_accrual_amount = self.env['res.currency'].with_context(
-                    date=self.cutoff_date)._compute(currency,
-                                                    company_currency_id,
-                                                    tax_line['amount'])
+                currency_at_date = currency.with_context(date=self.cutoff_date)
+                tax_accrual_amount = currency_at_date.compute(
+                        tax_line['amount'], company_currency_id)
             else:
                 tax_accrual_amount = tax_line['amount']
             tax_line_ids.append((0, 0, {
@@ -120,9 +119,9 @@ class AccountCutoff(models.Model):
                 # account_analytic_collected_id is for invoices IN and OUT
             }))
         if company_currency_id != currency_id:
-            amount_company_currency = self.env['res.currency'].with_context(
-                date=self.cutoff_date)._compute(
-                    currency, company_currency_id, amount)
+            currency_at_date = currency.with_context(date=self.cutoff_date)
+            amount_company_currency = currency_at_date.compute(
+                amount, company_currency_id)
         else:
             amount_company_currency = amount
         # we use account mapping here
@@ -165,7 +164,7 @@ class AccountCutoff(models.Model):
                 [('qty_to_invoice', '!=', 0)]
             )
         else:
-            raise exceptions.Warning(
+            raise exceptions.UserError(
                     _("Error: account.cutoff type is incorrect"))
         return lines
 
