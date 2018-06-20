@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # Copyright 2017 ACSONE SA/NV
+# Copyright 2018 Jacques-Etienne Baudoux (BCIM sprl) <je@bcim.be>
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl).
 
 from odoo import api, exceptions, fields, models, _
@@ -57,11 +58,10 @@ class AccountInvoice(models.Model):
             else:
                 # Use default values of the reversal wizard to create the
                 # reverse
-                reverse_obj = self.env['account.move.reverse']
-                reverse_wizard =\
-                    reverse_obj.create({'date': invoice_date})
-                reverse_wizard.with_context(active_ids=accrual_move.ids) \
-                    .action_reverse()
+                reverse_obj = self.env['account.move.reverse'].with_context(
+                    active_id=accrual_move.id, active_ids=accrual_move.ids)
+                reverse_wizard = reverse_obj.create({'date': invoice_date})
+                reverse_wizard.action_reverse()
 
     @api.multi
     def invoice_validate(self):
@@ -159,8 +159,8 @@ class AccountInvoice(models.Model):
             for t in totlines:
                 if self.currency_id.id != company_currency.id:
                     amount_currency = company_currency.with_context(
-                        date=self.date_invoice).compute(self.currency_id.id,
-                                                        t[1])
+                        date=self.date_invoice).compute(
+                        t[1], self.currency_id)
                 else:
                     amount_currency = False
 
@@ -235,10 +235,9 @@ class AccountInvoice(models.Model):
     @api.multi
     def _post_accrual_move(self, accrual_move_id):
         self.ensure_one()
-        # Pass invoice in context in method post: used if you want to get the
-        # same account move reference when creating the same invoice after a
-        # cancelled one:
-        accrual_move_id.with_context(invoice=self).post()
+        # Prevent passing invoice in context in method post: otherwise accrual
+        # sequence could be the one from this invoice
+        accrual_move_id.with_context(invoice=False).post()
 
     @api.multi
     def create_accruals(self, accrual_date, account_id,
